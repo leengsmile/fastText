@@ -722,6 +722,7 @@ void FastText::train(const Args& args) {
     throw std::invalid_argument(
         args_->input + " cannot be opened for training!");
   }
+  // - 从args->input文件生成训练所需要的词表。
   dict_->readFromFile(ifs);
   ifs.close();
 

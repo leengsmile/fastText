@@ -34,6 +34,10 @@ struct entry {
 class Dictionary {
  protected:
   static const int32_t MAX_VOCAB_SIZE = 30000000;
+  
+  /* - 每次读取MAX_LINE_SIZE个单词。这里LINE字段有误导行，
+       并不是文件中每行只读取前1024个单词。
+  */
   static const int32_t MAX_LINE_SIZE = 1024;
 
   int32_t find(const std::string&) const;

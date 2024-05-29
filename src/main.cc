@@ -401,6 +401,7 @@ void dump(const std::vector<std::string>& args) {
 }
 
 int main(int argc, char** argv) {
+  //# 将char**格式的参数转换成std::vector<std::string>
   std::vector<std::string> args(argv, argv + argc);
   if (args.size() < 2) {
     printUsage();
@@ -408,6 +409,7 @@ int main(int argc, char** argv) {
   }
   std::string command(args[1]);
   if (command == "skipgram" || command == "cbow" || command == "supervised") {
+    //# word2vec的 `skipgram`, `continous bag of words`执行train
     train(args);
   } else if (command == "test" || command == "test-label") {
     test(args);
