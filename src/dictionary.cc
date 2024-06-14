@@ -234,9 +234,9 @@ bool Dictionary::readWord(std::istream& in, std::string& word) const {
 void Dictionary::readFromFile(std::istream& in) {
   std::string word;
   int64_t minThreshold = 1;
-  // - readWord为手动实现的单词解析函数，比c++的stringstream等函数更快
+  // -*- readWord为手动实现的单词解析函数，比c++的stringstream等函数更快
   while (readWord(in, word)) {
-    // - 将解析的单次添加到词表中
+    // -*- 将解析的单次添加到词表中
     add(word);
     if (ntokens_ % 1000000 == 0 && args_->verbose > 1) {
       std::cerr << "\rRead " << ntokens_ / 1000000 << "M words" << std::flush;
@@ -245,7 +245,7 @@ void Dictionary::readFromFile(std::istream& in) {
     // * 单词数不超过 0.75 * 3kw = 2250w, 如果单词数超过该阈值，则删掉当前词频最低的单词
     if (size_ > 0.75 * MAX_VOCAB_SIZE) {
 
-      /* - 虽然这里的minThreshold有自增，但是内部删掉的词，其词频需满足 
+      /* -*- 虽然这里的minThreshold有自增，但是内部删掉的词，其词频需满足 
           frequency < minThreshold.
           并没有等号，表明第一删除词频为1的单词，接着删除词频为2的的单词，以此类推. 
       */ 
@@ -253,8 +253,9 @@ void Dictionary::readFromFile(std::istream& in) {
       threshold(minThreshold, minThreshold);
     }
   }
-  // - 删除词频低于5的单词.
+  // -*- 删除词频低于5的单词.
   threshold(args_->minCount, args_->minCountLabel);
+  // -*- 初始化降采样的概率分布
   initTableDiscard();
   initNgrams();
   if (args_->verbose > 0) {
@@ -268,21 +269,21 @@ void Dictionary::readFromFile(std::istream& in) {
   }
 }
 
-/** - t表示单词过滤的阈值
+/** -*- t表示单词过滤的阈值
  * 
 */
 void Dictionary::threshold(int64_t t, int64_t tl) {
-  // - words_的结构为[(type, count)]，其中type标记token为单词还是label
+  // -*- words_的结构为[(type, count)]，其中type标记token为单词还是label
 
-  // - 将words_ 按单词、label分组，并且各组按照词频从高到底排序
+  // -*- 将words_ 按单词、label分组，并且各组按照词频从高到底排序
   sort(words_.begin(), words_.end(), [](const entry& e1, const entry& e2) {
     if (e1.type != e2.type) {
       return e1.type < e2.type;
     }
     return e1.count > e2.count;
   });
-  /** - remove_if会删除words_中低频的单词，并移动新的单词覆盖被删掉的单词，保证
-      - words_留下的单词，存储在连续的空间。
+  /** -*- remove_if会删除words_中低频的单词，并移动新的单词覆盖被删掉的单词，保证
+      -*- words_留下的单词，存储在连续的空间。
       remove_if之前的单词需要保留，从remove_if开始的单词需要清理。
       erase(first, last)将删除[first, last)之间的元素。
   */
@@ -295,20 +296,30 @@ void Dictionary::threshold(int64_t t, int64_t tl) {
                 (e.type == entry_type::label && e.count < tl);
           }),
       words_.end());
-  // - 降低words_的底层空间大小
+  // -*- 降低words_的底层空间大小
   words_.shrink_to_fit();
 
-  /** - 重置单词数。如果不区分entry_type, size_ = nwords_，是words_中记录的单词数。 
-   *  - 
+  /** -*- 重置单词数。如果不区分entry_type, size_ = nwords_，是words_中记录的单词数。 
+   *  -*- 
   */
   size_ = 0;
   nwords_ = 0;
   nlabels_ = 0;
-  // - word2int_ 记录的是每个单词在word_的下标.
-  // idx = word2int_[h] => words_[idx]则存储的跟word相关的信息，词频、word本身
+  /** -*- word2int_ 记录的是每个单词在word_的下标.
+   *      h = find(w) => idx = word2int_[h] => words_[idx]则存储的跟word相关的信息，
+   *      即words_[idx].w = w
+   *      words_是经过低频过滤后的单词表，word2int_含有待删除的单词信息，进而需要清空，重新设置。
+   *      修改流程为：
+   *         1) word2int_[:] = -1, 表示重新计算所有单词的下标，进而size_置零。
+   *         2.a) 对于words_中的每一个单词w，其在words_的下标为idx
+   *         2.1) 在word2int_查找一个可用的位置h = find(w)
+   *         2.2) 更新word2int_，word2int_[h]用于记录w在words_中的下标。
+   *              此处下标idx = size_
+   *         2.3) 更新size_，标明word2int_记录的单词数增加1.
+  */
   std::fill(word2int_.begin(), word2int_.end(), -1);
   for (auto it = words_.begin(); it != words_.end(); ++it) {
-    // - find函数查找字符串在word_中的一个合适位置，返回值h可用于存储word相关信息。
+    // -*- find函数查找字符串在word_中的一个合适位置，返回值h可用于存储word相关信息。
     int32_t h = find(it->word);
     word2int_[h] = size_++;
     if (it->type == entry_type::word) {
@@ -321,7 +332,17 @@ void Dictionary::threshold(int64_t t, int64_t tl) {
 }
 
 void Dictionary::initTableDiscard() {
+  /** -*- pdiscard_记录每个单词在采样中，被保留的概率
+   *      pdiscard_的大小与word2int_记录的单词数一致
+  */
   pdiscard_.resize(size_);
+
+  /**
+   * f_i = c_i / n
+   * p[i] = sqrt(t / f_i) + t / f_i
+   * 
+   * p[i]是f_i的单调递减函数
+  */
   for (size_t i = 0; i < size_; i++) {
     real f = real(words_[i].count) / real(ntokens_);
     pdiscard_[i] = std::sqrt(args_->t / f) + args_->t / f;
