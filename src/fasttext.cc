@@ -629,6 +629,14 @@ void FastText::analogies(int32_t k) {
 }
 
 void FastText::trainThread(int32_t threadId) {
+  /* -*- 将文件分成n份，每个线程读取其中一份。
+      
+      疑问： 按文件偏移量跳转，是否跳转到某个单词的中间，即将一个单词分配到2个线程中操作。
+            个人认为是多线程的训练虽然会切割单词，但是线程数有限，将单词切割到多个线程，
+            这种情况所涉及到单词数相对于总体的单词数微乎其微，可以忽略不计。
+
+            此时，可以将被切割的单词，切割所得的两部分，分别当成新的单词。
+  */
   std::ifstream ifs(args_->input);
   utils::seek(ifs, threadId * utils::size(ifs) / args_->thread);
 
@@ -729,6 +737,8 @@ void FastText::train(const Args& args) {
   if (args_->pretrainedVectors.size() != 0) {
     loadVectors(args_->pretrainedVectors);
   } else {
+    // -*- 输入的embedding矩阵，如果不考虑subword，则输入embedding矩阵的大小与输出的
+    // embedding矩阵大小相同
     input_ =
         std::make_shared<Matrix>(dict_->nwords() + args_->bucket, args_->dim);
     input_->uniform(1.0 / args_->dim);
@@ -737,9 +747,11 @@ void FastText::train(const Args& args) {
   if (args_->model == model_name::sup) {
     output_ = std::make_shared<Matrix>(dict_->nlabels(), args_->dim);
   } else {
+    // -*- 输出的embedding矩阵
     output_ = std::make_shared<Matrix>(dict_->nwords(), args_->dim);
   }
   output_->zero();
+  // -*- 多线程初始化
   startThreads();
   model_ = std::make_shared<Model>(input_, output_, args_, 0);
   if (args_->model == model_name::sup) {
@@ -754,6 +766,7 @@ void FastText::startThreads() {
   tokenCount_ = 0;
   loss_ = -1;
   std::vector<std::thread> threads;
+  // -*- 开启args_ -> thred个现成，用于模型训练
   for (int32_t i = 0; i < args_->thread; i++) {
     threads.push_back(std::thread([=]() { trainThread(i); }));
   }

@@ -57,8 +57,10 @@ int32_t Dictionary::find(const std::string& w, uint32_t h) const {
 
 void Dictionary::add(const std::string& w) {
   int32_t h = find(w);
+  // -*- 读入的每个token都计数，即ntokens_增加1
   ntokens_++;
   if (word2int_[h] == -1) {
+    // -*- w是新单词，尚未记录
     entry e;
     e.word = w;
     e.count = 1;
@@ -66,6 +68,8 @@ void Dictionary::add(const std::string& w) {
     words_.push_back(e);
     word2int_[h] = size_++;
   } else {
+    // -*- w是已经记录过的单词, 其在words_中的位置通过查询word2int_可得。
+    // word2int_[h]记录w在words_的下标。
     words_[word2int_[h]].count++;
   }
 }
@@ -253,7 +257,7 @@ void Dictionary::readFromFile(std::istream& in) {
       threshold(minThreshold, minThreshold);
     }
   }
-  // -*- 删除词频低于5的单词.
+  // -*- 删除词频低于5的单词. (不包含词频为5的单词)
   threshold(args_->minCount, args_->minCountLabel);
   // -*- 初始化降采样的概率分布
   initTableDiscard();
@@ -332,9 +336,11 @@ void Dictionary::threshold(int64_t t, int64_t tl) {
 }
 
 void Dictionary::initTableDiscard() {
-  /** -*- pdiscard_记录每个单词在采样中，被保留的概率
+  /** -*- pdiscard_记录每个单词在采样中，被**保留**的概率
    *      pdiscard_的大小与word2int_记录的单词数一致
   */
+
+  // resize 可以降低vector内存重复分配的开销
   pdiscard_.resize(size_);
 
   /**
